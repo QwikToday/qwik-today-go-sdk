@@ -2,9 +2,12 @@ package qwiktoday
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -98,5 +101,39 @@ func TestPollReturnsCredential(t *testing.T) {
 	}
 	if credential.Key != "key" || credential.Secret != "secret" {
 		t.Fatalf("unexpected credential: %+v", credential)
+	}
+}
+
+func TestRevokeSignsCurrentCredential(t *testing.T) {
+	client := mockClient(t, http.StatusOK, `{"message":"OAuth credential revoked successfully","data":null}`,
+		func(req *http.Request) {
+			if req.Method != http.MethodDelete || req.URL.Path != "/api/client/oauth/revoke" {
+				t.Errorf("request = %s %s", req.Method, req.URL.Path)
+			}
+			bodyHash := sha256.Sum256([]byte("{}"))
+			stringToSign := req.Method + ":key:" + hex.EncodeToString(bodyHash[:]) + ":secret"
+			mac := hmac.New(sha256.New, []byte("secret"))
+			_, _ = mac.Write([]byte(stringToSign))
+			if got, want := req.Header.Get("signature"), hex.EncodeToString(mac.Sum(nil)); got != want {
+				t.Errorf("signature = %q, want %q", got, want)
+			}
+			if got := req.Header.Get("va"); got != "key" {
+				t.Errorf("va = %q", got)
+			}
+		},
+	)
+
+	if err := client.Revoke(context.Background(), "key", "secret"); err != nil {
+		t.Fatalf("Revoke() error = %v", err)
+	}
+}
+
+func TestRevokeRequiresCredential(t *testing.T) {
+	client, err := New("https://api.example.test", "desktop-pos")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Revoke(context.Background(), "", ""); !errors.Is(err, ErrInvalidConfiguration) {
+		t.Fatalf("Revoke() error = %v", err)
 	}
 }

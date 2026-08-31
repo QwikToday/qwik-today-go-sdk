@@ -4,9 +4,11 @@ package qwiktoday
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -199,6 +201,52 @@ func (c *Client) Wait(ctx context.Context, session *Session) (*Credential, error
 		case <-timer.C:
 		}
 	}
+}
+
+// Revoke revokes the OAuth credential used to sign the request. The SDK does
+// not retain key or secret; the client application remains responsible for
+// loading them from, and deleting them from, its own secure storage.
+func (c *Client) Revoke(ctx context.Context, key, secret string) error {
+	key = strings.TrimSpace(key)
+	if key == "" || secret == "" {
+		return fmt.Errorf("%w: credential key and secret are required", ErrInvalidConfiguration)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.BaseURL+"/api/client/oauth/revoke", nil)
+	if err != nil {
+		return err
+	}
+	SignRequest(req, key, secret, nil)
+
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return decodeAPIError(resp.StatusCode, raw)
+	}
+	return nil
+}
+
+// SignRequest adds the va and signature headers expected by Qwik Today's
+// client API. For requests with a body, body must contain the exact bytes sent.
+// Pass nil for an empty request body.
+func SignRequest(req *http.Request, key, secret string, body []byte) {
+	bodyToHash := body
+	if len(bodyToHash) == 0 {
+		bodyToHash = []byte("{}")
+	}
+	digest := sha256.Sum256(bodyToHash)
+	stringToSign := fmt.Sprintf("%s:%s:%s:%s", req.Method, key, hex.EncodeToString(digest[:]), secret)
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(stringToSign))
+	req.Header.Set("va", key)
+	req.Header.Set("signature", hex.EncodeToString(mac.Sum(nil)))
 }
 
 func (c *Client) postJSON(ctx context.Context, path string, body, target interface{}) (int, []byte, error) {
