@@ -137,3 +137,45 @@ func TestRevokeRequiresCredential(t *testing.T) {
 		t.Fatalf("Revoke() error = %v", err)
 	}
 }
+
+func TestListSoundboxUsers(t *testing.T) {
+	client := mockClient(t, http.StatusOK, `{"message":"ok","data":[{"id":1,"uuid":"su-1","is_active":true,"outstanding_billing":3000}],"pagination":{"page":1,"limit":10,"total":1,"total_page":1}}`, func(req *http.Request) {
+		if req.URL.Path != "/api/client/soundbox-user" || req.URL.Query().Get("page") != "1" {
+			t.Errorf("unexpected URL: %s", req.URL.String())
+		}
+		if req.Header.Get("va") != "key" || req.Header.Get("signature") == "" {
+			t.Error("signed headers are missing")
+		}
+	})
+	items, pagination, err := client.ListSoundboxUsers(context.Background(), "key", "secret", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].UUID != "su-1" || pagination.Total != 1 {
+		t.Fatalf("unexpected response: %+v %+v", items, pagination)
+	}
+}
+
+func TestSendSoundboxNotificationSignsExactBody(t *testing.T) {
+	payload := SoundboxNotificationRequest{Amount: "10000", BillNumber: "INV-1", IssuerCode: "TEST", PaymentStatus: "SUCCESS"}
+	client := mockClient(t, http.StatusOK, `{"message":"ok","data":{"status":200}}`, func(req *http.Request) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := sha256.Sum256(body)
+		stringToSign := req.Method + ":key:" + hex.EncodeToString(digest[:]) + ":secret"
+		mac := hmac.New(sha256.New, []byte("secret"))
+		_, _ = mac.Write([]byte(stringToSign))
+		if req.Header.Get("signature") != hex.EncodeToString(mac.Sum(nil)) {
+			t.Error("signature does not match request body")
+		}
+	})
+	response, err := client.SendSoundboxNotification(context.Background(), "key", "secret", "su-1", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response["status"] != float64(200) {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+}
