@@ -157,7 +157,7 @@ func TestListSoundboxUsers(t *testing.T) {
 }
 
 func TestSendSoundboxNotificationSignsExactBody(t *testing.T) {
-	payload := SoundboxNotificationRequest{Amount: "10000", BillNumber: "INV-1", IssuerCode: "TEST", PaymentStatus: "SUCCESS"}
+	payload := SoundboxNotificationRequest{Amount: "10000"}
 	client := mockClient(t, http.StatusOK, `{"message":"ok","data":{"status":200}}`, func(req *http.Request) {
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
@@ -177,5 +177,29 @@ func TestSendSoundboxNotificationSignsExactBody(t *testing.T) {
 	}
 	if response["status"] != float64(200) {
 		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
+func TestPayBillings(t *testing.T) {
+	client := mockClient(t, http.StatusOK, `{"message":"ok","data":{"uuid":"pay-1","amount":6000,"status":"pending","payment_method":"qris","payment_url":"https://payment.test/pay-1","expires_at":"2026-09-03T11:00:00+08:00"}}`, func(req *http.Request) {
+		if req.Method != http.MethodPost || req.URL.Path != "/api/client/billings/payment" {
+			t.Errorf("unexpected request: %s %s", req.Method, req.URL.Path)
+		}
+		var payload BillingPaymentRequest
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if len(payload.BillingUUIDs) != 2 || payload.PaymentMethod != "qris" {
+			t.Fatalf("unexpected payload: %+v", payload)
+		}
+	})
+	payment, err := client.PayBillings(context.Background(), "key", "secret", BillingPaymentRequest{
+		BillingUUIDs: []string{"billing-1", "billing-2"}, PaymentMethod: "qris",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payment.UUID != "pay-1" || payment.Amount != 6000 || payment.PaymentURL == "" {
+		t.Fatalf("unexpected response: %+v", payment)
 	}
 }

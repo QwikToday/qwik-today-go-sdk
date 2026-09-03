@@ -63,11 +63,19 @@ type BillingList struct {
 	Total    float64   `json:"total"`
 }
 type SoundboxNotificationRequest struct {
-	TransactionDatetime string `json:"transaction_datetime,omitempty"`
-	Amount              string `json:"amount"`
-	BillNumber          string `json:"bill_number"`
-	IssuerCode          string `json:"issuer_code"`
-	PaymentStatus       string `json:"payment_status"`
+	Amount string `json:"amount"`
+}
+type BillingPaymentRequest struct {
+	BillingUUIDs  []string `json:"billing_uuids"`
+	PaymentMethod string   `json:"payment_method,omitempty"`
+}
+type BillingPayment struct {
+	UUID          string    `json:"uuid"`
+	Amount        float64   `json:"amount"`
+	Status        string    `json:"status"`
+	PaymentMethod string    `json:"payment_method"`
+	PaymentURL    string    `json:"payment_url"`
+	ExpiresAt     time.Time `json:"expires_at"`
 }
 
 func (c *Client) Test(ctx context.Context, key, secret string) (map[string]interface{}, error) {
@@ -111,6 +119,14 @@ func (c *Client) ListBillings(ctx context.Context, key, secret, status string) (
 		Data BillingList `json:"data"`
 	}
 	err := c.signedJSON(ctx, http.MethodGet, "/api/client/billings?"+query.Encode(), key, secret, nil, &envelope)
+	return &envelope.Data, err
+}
+
+func (c *Client) PayBillings(ctx context.Context, key, secret string, payload BillingPaymentRequest) (*BillingPayment, error) {
+	var envelope struct {
+		Data BillingPayment `json:"data"`
+	}
+	err := c.signedJSON(ctx, http.MethodPost, "/api/client/billings/payment", key, secret, payload, &envelope)
 	return &envelope.Data, err
 }
 

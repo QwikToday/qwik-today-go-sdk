@@ -11,6 +11,7 @@ session, err := client.Start(
 	"client.test",
 	"soundbox-user.read",
 	"soundbox-billing.read",
+	"soundbox-billing.pay",
 	"soundbox-notification.create",
 )
 if err != nil {
@@ -51,6 +52,7 @@ the device remain the responsibility of the client application.
 | `soundbox-user.read` | `GET /api/client/soundbox-user` | List the member's soundbox users. |
 | `soundbox-user.read` | `GET /api/client/soundbox-user/:uuid` | Get a soundbox user, including its TSM device data. |
 | `soundbox-billing.read` | `GET /api/client/billings` | List billings from all soundboxes owned by the member. |
+| `soundbox-billing.pay` | `POST /api/client/billings/payment` | Create or reuse an active iPaymu payment link for selected billings. |
 | `soundbox-notification.create` | `POST /api/client/soundbox-user/:soundbox_user_uuid/notification` | Send a transaction notification to TSM and trigger daily pay-as-you-go billing. |
 
 `DELETE /api/client/oauth/revoke` does not require an additional scope. It
@@ -69,7 +71,11 @@ After authorization, use the returned key and secret:
 soundboxes, pagination, err := client.ListSoundboxUsers(ctx, credential.Key, credential.Secret, 1, 10)
 detail, err := client.GetSoundboxUser(ctx, credential.Key, credential.Secret, soundboxes[0].UUID)
 billings, err := client.ListBillings(ctx, credential.Key, credential.Secret, "unpaid")
+payment, err := client.PayBillings(ctx, credential.Key, credential.Secret, qwiktoday.BillingPaymentRequest{
+	BillingUUIDs: []string{billings.Billings[0].UUID},
+	PaymentMethod: "qris",
+})
 response, err := client.SendSoundboxNotification(ctx, credential.Key, credential.Secret, detail.UUID, qwiktoday.SoundboxNotificationRequest{
-	Amount: "150000.00", BillNumber: "INV-001", IssuerCode: "93600911", PaymentStatus: "SUCCESS",
+	Amount: "150000.00",
 })
 ```
