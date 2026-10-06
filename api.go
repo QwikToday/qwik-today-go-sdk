@@ -78,12 +78,117 @@ type BillingPayment struct {
 	ExpiresAt     time.Time `json:"expires_at"`
 }
 
+type QrisStatic struct {
+	ID           uint       `json:"id"`
+	BookingAt    *time.Time `json:"booking_at,omitempty"`
+	BookingNotes *string    `json:"booking_notes,omitempty"`
+	BookingRefID string     `json:"booking_ref_id"`
+	DownloadURL  string     `json:"download_url"`
+	Mpan         string     `json:"mpan"`
+	Nmid         string     `json:"nmid"`
+	NnsCode      *string    `json:"nns_code,omitempty"`
+	NotifyURL    *string    `json:"notify_url,omitempty"`
+	QrCategory   string     `json:"qr_category"`
+	QrName       string     `json:"qr_name"`
+	QrString     string     `json:"qr_string"`
+	QrisID       string     `json:"qris_id"`
+	ReferenceID  *string    `json:"reference_id,omitempty"`
+	Terminal     string     `json:"terminal"`
+	Vendor       *string    `json:"vendor,omitempty"`
+	Status       string     `json:"status"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+type QrisStaticWebhook struct {
+	ID        uint      `json:"id"`
+	URL       string    `json:"url"`
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type QrisStaticWebhookRequest struct {
+	URL    string `json:"url"`
+	Secret string `json:"secret,omitempty"`
+}
+
+type QrisWebhookDeliveryStatus struct {
+	ID         uint   `json:"id"`
+	URL        string `json:"url"`
+	Sent       bool   `json:"sent"`
+	StatusCode int    `json:"status_code,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+type QrisStaticTestNotificationResponse struct {
+	Qris     QrisStatic                  `json:"qris"`
+	Webhooks []QrisWebhookDeliveryStatus `json:"webhooks"`
+}
+
 func (c *Client) Test(ctx context.Context, key, secret string) (map[string]interface{}, error) {
 	var envelope struct {
 		Data map[string]interface{} `json:"data"`
 	}
-	err := c.signedJSON(ctx, http.MethodPost, "/api/client/test", key, secret, nil, &envelope)
+	err := c.signedJSON(ctx, http.MethodGet, "/api/client/test", key, secret, nil, &envelope)
 	return envelope.Data, err
+}
+
+func (c *Client) ListQrisStatics(ctx context.Context, key, secret string) ([]QrisStatic, error) {
+	var envelope struct {
+		Data []QrisStatic `json:"data"`
+	}
+	err := c.signedJSON(ctx, http.MethodGet, "/api/client/qris-static", key, secret, nil, &envelope)
+	return envelope.Data, err
+}
+
+func (c *Client) GetQrisStatic(ctx context.Context, key, secret, nmid string) (*QrisStatic, error) {
+	var envelope struct {
+		Data QrisStatic `json:"data"`
+	}
+	err := c.signedJSON(ctx, http.MethodGet, "/api/client/qris-static/"+url.PathEscape(nmid), key, secret, nil, &envelope)
+	if err != nil {
+		return nil, err
+	}
+	return &envelope.Data, nil
+}
+
+func (c *Client) ListQrisWebhooks(ctx context.Context, key, secret, nmid string) ([]QrisStaticWebhook, error) {
+	var envelope struct {
+		Data []QrisStaticWebhook `json:"data"`
+	}
+	path := "/api/client/qris-static/" + url.PathEscape(nmid) + "/webhooks"
+	err := c.signedJSON(ctx, http.MethodGet, path, key, secret, nil, &envelope)
+	return envelope.Data, err
+}
+
+func (c *Client) AddQrisWebhook(ctx context.Context, key, secret, nmid string, payload QrisStaticWebhookRequest) (*QrisStaticWebhook, error) {
+	var envelope struct {
+		Data QrisStaticWebhook `json:"data"`
+	}
+	path := "/api/client/qris-static/" + url.PathEscape(nmid) + "/webhooks"
+	err := c.signedJSON(ctx, http.MethodPost, path, key, secret, payload, &envelope)
+	if err != nil {
+		return nil, err
+	}
+	return &envelope.Data, nil
+}
+
+func (c *Client) DeleteQrisWebhook(ctx context.Context, key, secret, nmid string, webhookID uint) error {
+	path := fmt.Sprintf("/api/client/qris-static/%s/webhooks/%d", url.PathEscape(nmid), webhookID)
+	return c.signedJSON(ctx, http.MethodDelete, path, key, secret, nil, nil)
+}
+
+func (c *Client) TestQrisStaticNotification(ctx context.Context, key, secret, nmid string) (*QrisStaticTestNotificationResponse, error) {
+	var envelope struct {
+		Data QrisStaticTestNotificationResponse `json:"data"`
+	}
+	path := "/api/client/qris-static/" + url.PathEscape(nmid) + "/notification"
+	err := c.signedJSON(ctx, http.MethodPost, path, key, secret, nil, &envelope)
+	if err != nil {
+		return nil, err
+	}
+	return &envelope.Data, nil
 }
 
 func (c *Client) ListSoundboxUsers(ctx context.Context, key, secret string, page, limit int) ([]SoundboxUser, *Pagination, error) {

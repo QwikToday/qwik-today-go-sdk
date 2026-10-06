@@ -48,7 +48,13 @@ the device remain the responsibility of the client application.
 
 | Scope | Endpoint | Description |
 |---|---|---|
-| `client.test` | `POST /api/client/test` | Test the client credential and request signature. |
+| `client.test` | `GET /api/client/test` | Test the client credential and request signature, including granted scopes. |
+| `qris-static.read` | `GET /api/client/qris-static` | List QRIS static owned by the credential user. |
+| `qris-static.read` | `GET /api/client/qris-static/:nmid` | Get one owned QRIS static by NMID. |
+| `qris-static.webhook.read` | `GET /api/client/qris-static/:nmid/webhooks` | List webhook URLs for an owned QRIS. |
+| `qris-static.webhook.manage` | `POST /api/client/qris-static/:nmid/webhooks` | Add a webhook URL to an owned QRIS. |
+| `qris-static.webhook.manage` | `DELETE /api/client/qris-static/:nmid/webhooks/:id` | Remove a webhook URL from an owned QRIS. |
+| `qris-static.notification.create` | `POST /api/client/qris-static/:nmid/notification` | Send a non-persistent test notification to all active webhooks. |
 | `soundbox-user.read` | `GET /api/client/soundbox-user` | List the member's soundbox users. |
 | `soundbox-user.read` | `GET /api/client/soundbox-user/:uuid` | Get a soundbox user, including its TSM device data. |
 | `soundbox-billing.read` | `GET /api/client/billings` | List billings from all soundboxes owned by the member. |
@@ -78,4 +84,11 @@ payment, err := client.PayBillings(ctx, credential.Key, credential.Secret, qwikt
 response, err := client.SendSoundboxNotification(ctx, credential.Key, credential.Secret, detail.UUID, qwiktoday.SoundboxNotificationRequest{
 	Amount: "150000.00",
 })
+
+qris, err := client.ListQrisStatics(ctx, credential.Key, credential.Secret)
+webhook, err := client.AddQrisWebhook(ctx, credential.Key, credential.Secret, qris[0].Nmid, qwiktoday.QrisStaticWebhookRequest{
+	URL: "https://partner.example/webhooks/qris",
+})
+testResult, err := client.TestQrisStaticNotification(ctx, credential.Key, credential.Secret, qris[0].Nmid)
+fmt.Println(webhook.ID, testResult.Webhooks)
 ```
