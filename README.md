@@ -92,3 +92,52 @@ webhook, err := client.AddQrisWebhook(ctx, credential.Key, credential.Secret, qr
 testResult, err := client.TestQrisStaticNotification(ctx, credential.Key, credential.Secret, qris[0].Nmid)
 fmt.Println(webhook.ID, testResult.Webhooks)
 ```
+
+### Webhook payload and security
+
+The webhook body is intentionally minimal:
+
+```json
+{"total":0}
+```
+
+For a real payment, `total` contains the payment total. The event type is sent
+in the `X-Qwik-Event` header (`qris.static.payment` for a real payment and
+`qris.static.test` for a test). If a webhook secret is configured, Qwik sends
+the hexadecimal HMAC-SHA256 digest in `X-Qwik-Signature`.
+
+Verify the signature against the exact raw request bytes before parsing JSON:
+
+```go
+rawBody, err := io.ReadAll(r.Body)
+if err != nil || !qwiktoday.VerifyQrisWebhookSignature(
+	rawBody,
+	r.Header.Get("X-Qwik-Signature"),
+) {
+	http.Error(w, "invalid webhook signature", http.StatusUnauthorized)
+	return
+}
+
+var payload qwiktoday.QrisStaticWebhookPayload
+if err := json.Unmarshal(rawBody, &payload); err != nil {
+	http.Error(w, "invalid webhook payload", http.StatusBadRequest)
+	return
+}
+```
+
+Security recommendations:
+
+- Use an HTTPS webhook URL and validate the URL before registering it.
+- Generate a random secret of at least 32 bytes; do not use a predictable name,
+  NMID, API key, or password.
+- Store the secret in a secret manager or encrypted environment variable. The
+  API never returns it when listing webhooks.
+- Never log the secret, signature, or raw body if it can contain sensitive data.
+- Compare signatures with the SDK helper, which uses constant-time comparison.
+- Keep the raw body unchanged until signature verification is complete; even
+  whitespace or re-serialization changes the signature input.
+- Return a 2xx response only after accepting the notification. Use an
+  idempotency key in the receiving application if duplicate delivery handling
+  is required.
+- Rotate a secret by registering a new webhook with the new secret, verifying
+  it, then deleting the old webhook.

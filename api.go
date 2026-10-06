@@ -3,12 +3,16 @@ package qwiktoday
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -109,8 +113,14 @@ type QrisStaticWebhook struct {
 }
 
 type QrisStaticWebhookRequest struct {
-	URL    string `json:"url"`
-	Secret string `json:"secret,omitempty"`
+	URL    string `json:"url"`              // HTTPS URL recommended.
+	Secret string `json:"secret,omitempty"` // Never log or expose after registration.
+}
+
+// QrisStaticWebhookPayload is the JSON body sent to each configured webhook.
+// The raw request body must be preserved when verifying its signature.
+type QrisStaticWebhookPayload struct {
+	Total json.Number `json:"total"`
 }
 
 type QrisWebhookDeliveryStatus struct {
@@ -124,6 +134,19 @@ type QrisWebhookDeliveryStatus struct {
 type QrisStaticTestNotificationResponse struct {
 	Qris     QrisStatic                  `json:"qris"`
 	Webhooks []QrisWebhookDeliveryStatus `json:"webhooks"`
+}
+
+// VerifyQrisWebhookSignature verifies X-Qwik-Signature against the exact raw
+// request body using the webhook secret and HMAC-SHA256. Verify before JSON
+// decoding and reject the request when it returns false.
+func VerifyQrisWebhookSignature(rawBody []byte, secret, signature string) bool {
+	if secret == "" || signature == "" {
+		return false
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write(rawBody)
+	expected := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(strings.ToLower(strings.TrimSpace(signature))), []byte(expected))
 }
 
 func (c *Client) Test(ctx context.Context, key, secret string) (map[string]interface{}, error) {
